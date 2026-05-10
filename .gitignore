@@ -1,0 +1,4 @@
+venv/
+db_vectorielle/
+__pycache__/
+*.pyc
