@@ -1,57 +1,68 @@
 import os
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_community.llms import Ollama
-from langchain.chains import create_retrieval_chain
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain_core.prompts import ChatPromptTemplate
 
-# Imports spécifiques pour l'Agent (Version 0.3+)
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain import hub
 from langchain_core.tools import Tool
 
-# 1. Configuration du LLM (Ollama avec llama3)
-llm = Ollama(model="llama3")
+# 1. LLM (Ollama)
+llm = Ollama(model="tinyllama")
 
-# 2. Chargement de ta base vectorielle
-embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-miniLM-L6-v2")
-vector_db = Chroma(persist_directory="db_vectorielle", embedding_function=embeddings)
+# 2. Embeddings + Vector DB
+embeddings = HuggingFaceEmbeddings(
+    model_name="sentence-transformers/all-MiniLM-L6-v2"
+)
+
+vector_db = Chroma(
+    persist_directory="db_vectorielle",
+    embedding_function=embeddings
+)
+
 retriever = vector_db.as_retriever()
 
-# 3. Création de la fonction de recherche (RAG)
-def ask_docs(query):
-    # Recherche simple par similarité
-    docs = retriever.get_relevant_documents(query)
+# 3. Fonction RAG
+def ask_docs(query: str) -> str:
+    docs = retriever.invoke(query)
+    if not docs:
+        return "Aucune information trouvée dans les documents."
+
     return "\n\n".join([doc.page_content for doc in docs])
 
-# 4. Définition des outils pour l'Option 3
+# 4. Tools
 tools = [
     Tool(
         name="Documentation_Dev",
         func=ask_docs,
-        description="Recherche des informations techniques dans les PDF de SpringBoot et Angular."
+        description="Utilise cet outil pour répondre aux questions techniques liées à Angular ou Spring Boot."
     )
 ]
 
-# 5. Initialisation de l'Agent ReAct
-# On télécharge la logique de réflexion (le prompt)
+# 5. Prompt ReAct (agent)
 prompt = hub.pull("hwchase17/react")
 
-# On crée l'agent
+# 6. Création Agent
 agent = create_react_agent(llm, tools, prompt)
 
-# On crée l'exécuteur qui gère la boucle de réflexion
+# 7. Executor
 agent_executor = AgentExecutor(
-    agent=agent, 
-    tools=tools, 
-    verbose=True, 
-    handle_parsing_errors=True
+    agent=agent,
+    tools=tools,
+    verbose=True
 )
 
+# 8. Test
 if __name__ == "__main__":
-    print("--- Agentic RAG prêt (Thème Fullstack) ---")
-    try:
-        agent_executor.invoke({"input": "Comment créer un service en Angular ?"})
-    except Exception as e:
-        print(f"Erreur d'exécution : {e}")
+    print("--- Agentic RAG prêt ---")
+    
+    while True:
+        query = input("\nPose ta question (ou 'exit') : ")
+        if query.lower() == "exit":
+            break
+
+        try:
+            response = agent_executor.invoke({"input": query})
+            print("\nRéponse :", response["output"])
+        except Exception as e:
+            print("Erreur :", e)
