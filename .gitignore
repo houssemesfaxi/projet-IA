@@ -1,5 +1,5 @@
 .venv/
-db_vectorielle/
+db_vectorielle/*
 __pycache__/
 *.pyc
 .env
