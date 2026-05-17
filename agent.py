@@ -1,15 +1,20 @@
 import os
+import re
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
-from langchain_community.llms import Ollama
-
+from langchain_groq import ChatGroq
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain import hub
 from langchain_core.tools import Tool
 
 # 1. LLM (Ollama)
-llm = Ollama(model="tinyllama")
 
+llm = ChatGroq(
+    groq_api_key=os.getenv("GROQ_API_KEY"),
+    model_name="llama3-8b-8192",
+    temperature=0.3,        # Faible = réponses plus précises et moins créatives
+    max_tokens=1024,
+)
 # 2. Embeddings + Vector DB
 embeddings = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"

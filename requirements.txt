@@ -1,0 +1,22 @@
+# requirements.txt — Installe tout avec : pip install -r requirements.txt
+
+# LangChain (framework principal)
+langchain==0.2.16
+langchain-community==0.2.16
+langchain-groq==0.1.9
+langchain-huggingface==0.0.3
+langchain-text-splitters==0.2.4
+langchainhub==0.1.21
+
+# LLM & Embeddings
+groq==0.9.0
+sentence-transformers==3.0.1
+
+# Base vectorielle
+chromadb==0.5.3
+
+# Lecture PDF
+pypdf==4.3.1
+
+# Interface Web
+gradio==4.42.0
