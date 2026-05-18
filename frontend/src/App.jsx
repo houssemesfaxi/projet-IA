@@ -1,38 +1,5 @@
 import { useState, useRef, useEffect } from "react";
 
-const SYSTEM_PROMPT = `Tu es un assistant technique spécialisé en Angular et Spring Boot. 
-Tu peux consulter la documentation pour répondre aux questions techniques. 
-Tu peux aussi générer des quiz sur demande.
-Utilise un outil seulement si c'est utile.
-Base ta réponse finale sur le résultat de l'outil utilisé.`;
-
-const TOOLS = [
-  {
-    name: "chercher_dans_documents",
-    description:
-      "Cherche des informations techniques dans les documents (Angular, Spring Boot, etc.) et retourne les passages les plus pertinents.",
-    input_schema: {
-      type: "object",
-      properties: {
-        question: { type: "string", description: "La question de recherche" },
-      },
-      required: ["question"],
-    },
-  },
-  {
-    name: "generer_quiz",
-    description:
-      "Génère un quiz QCM de 3 questions à partir des documents sur un sujet donné. Utiliser quand l'utilisateur demande un quiz, des questions de révision ou un test.",
-    input_schema: {
-      type: "object",
-      properties: {
-        sujet: { type: "string", description: "Le sujet du quiz" },
-      },
-      required: ["sujet"],
-    },
-  },
-];
-
 const SUGGESTIONS = [
   { icon: "⚙️", text: "Comment créer un composant Angular ?" },
   { icon: "🌱", text: "Explique les annotations Spring Boot" },
@@ -171,26 +138,10 @@ function ArchitectureDiagram() {
         border: "1px solid #e8e6f0",
       }}
     >
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 700,
-          color: "#888",
-          letterSpacing: 1,
-          marginBottom: 10,
-        }}
-      >
+      <div style={{ fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: 1, marginBottom: 10 }}>
         PIPELINE ARCHITECTURE
       </div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 0,
-          flexWrap: "wrap",
-          rowGap: 8,
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "center", gap: 0, flexWrap: "wrap", rowGap: 8 }}>
         {steps.map((s, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center" }}>
             <div
@@ -208,9 +159,7 @@ function ArchitectureDiagram() {
               {s.icon} {s.label}
             </div>
             {i < steps.length - 1 && (
-              <span style={{ color: "#ccc", fontSize: 16, padding: "0 4px" }}>
-                →
-              </span>
+              <span style={{ color: "#ccc", fontSize: 16, padding: "0 4px" }}>→</span>
             )}
           </div>
         ))}
@@ -234,8 +183,6 @@ export default function RAGInterface() {
   const now = () =>
     new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 
-  
-
   const sendMessage = async (text) => {
     const question = text || input.trim();
     if (!question || loading) return;
@@ -247,82 +194,28 @@ export default function RAGInterface() {
     setMessages((prev) => [...prev, userMsg, thinkingMsg]);
 
     try {
-      const history = messages
-        .filter((m) => !m.thinking)
-        .map((m) => ({ role: m.role, content: m.content }));
-
-      const body = {
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1000,
-        system: SYSTEM_PROMPT,
-        tools: TOOLS,
-        messages: [...history, { role: "user", content: question }],
-      };
-
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      // ── Single fetch to Flask — Flask calls run_agent() which handles everything ──
+      const res = await fetch("http://localhost:5000/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ question }),
       });
 
-      const data = await res.json();
-      let toolUsed = null;
-      let finalContent = "";
-
-      const hasToolUse = data.content?.some((b) => b.type === "tool_use");
-
-      if (hasToolUse) {
-        const toolBlock = data.content.find((b) => b.type === "tool_use");
-        toolUsed = toolBlock.name;
-        const toolRes = await fetch("http://localhost:5000/ask", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ question }),
-        });
-        const toolData = await toolRes.json();
-        const toolResult = toolData.answer;
-
-        setStats((s) => ({
-          queries: s.queries + 1,
-          toolCalls: s.toolCalls + 1,
-          quizzes: toolBlock.name === "generer_quiz" ? s.quizzes + 1 : s.quizzes,
-        }));
-
-        const res2 = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-20250514",
-            max_tokens: 1000,
-            system: SYSTEM_PROMPT,
-            tools: TOOLS,
-            messages: [
-              ...history,
-              { role: "user", content: question },
-              { role: "assistant", content: data.content },
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "tool_result",
-                    tool_use_id: toolBlock.id,
-                    content: toolResult,
-                  },
-                ],
-              },
-            ],
-          }),
-        });
-        const data2 = await res2.json();
-        finalContent =
-          data2.content?.find((b) => b.type === "text")?.text ||
-          "Réponse générée.";
-      } else {
-        finalContent =
-          data.content?.find((b) => b.type === "text")?.text ||
-          "Je n'ai pas pu répondre.";
-        setStats((s) => ({ ...s, queries: s.queries + 1 }));
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Server error");
       }
+
+      const data = await res.json();
+      const finalContent = data.answer;
+      const toolUsed = data.tool_used || null;
+
+      // Update stats
+      setStats((s) => ({
+        queries: s.queries + 1,
+        toolCalls: toolUsed ? s.toolCalls + 1 : s.toolCalls,
+        quizzes: toolUsed === "generer_quiz" ? s.quizzes + 1 : s.quizzes,
+      }));
 
       setMessages((prev) =>
         prev.map((m, i) =>
@@ -335,15 +228,12 @@ export default function RAGInterface() {
       setMessages((prev) =>
         prev.map((m, i) =>
           i === prev.length - 1
-            ? {
-                role: "assistant",
-                content: "❌ Erreur : " + err.message,
-                time: now(),
-              }
+            ? { role: "assistant", content: "❌ Erreur : " + err.message, time: now() }
             : m
         )
       );
     }
+
     setLoading(false);
   };
 
@@ -359,8 +249,7 @@ export default function RAGInterface() {
       style={{
         display: "flex",
         height: "100vh",
-        fontFamily:
-          "'Segoe UI', system-ui, -apple-system, sans-serif",
+        fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
         background: "#f0eef8",
         overflow: "hidden",
       }}
@@ -379,7 +268,7 @@ export default function RAGInterface() {
         ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
       `}</style>
 
-      {/* Sidebar */}
+      {/* ── Sidebar ── */}
       <div
         style={{
           width: 240,
@@ -392,14 +281,7 @@ export default function RAGInterface() {
         }}
       >
         <div>
-          <div
-            style={{
-              fontSize: 18,
-              fontWeight: 800,
-              color: "#fff",
-              letterSpacing: -0.5,
-            }}
-          >
+          <div style={{ fontSize: 18, fontWeight: 800, color: "#fff", letterSpacing: -0.5 }}>
             🧠 RAG Agent
           </div>
           <div style={{ fontSize: 11, color: "#9F94E8", marginTop: 2 }}>
@@ -423,17 +305,8 @@ export default function RAGInterface() {
             { label: "Tool calls", value: stats.toolCalls, icon: "🔧" },
             { label: "Quizzes", value: stats.quizzes, icon: "📝" },
           ].map((s) => (
-            <div
-              key={s.label}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: 6,
-              }}
-            >
-              <span style={{ fontSize: 12, color: "#aaa" }}>
-                {s.icon} {s.label}
-              </span>
+            <div key={s.label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+              <span style={{ fontSize: 12, color: "#aaa" }}>{s.icon} {s.label}</span>
               <span
                 style={{
                   fontSize: 12,
@@ -455,21 +328,11 @@ export default function RAGInterface() {
             TOOLS AVAILABLE
           </div>
           {[
-            {
-              name: "chercher_dans_documents",
-              short: "RAG Search",
-              desc: "Vector similarity search",
-              color: "#0f766e",
-            },
-            {
-              name: "generer_quiz",
-              short: "Quiz Generator",
-              desc: "QCM from context",
-              color: "#7c3aed",
-            },
+            { short: "RAG Search", desc: "Vector similarity search", color: "#0f766e" },
+            { short: "Quiz Generator", desc: "QCM from context", color: "#7c3aed" },
           ].map((t) => (
             <div
-              key={t.name}
+              key={t.short}
               style={{
                 background: "#ffffff0d",
                 border: "1px solid #ffffff15",
@@ -478,14 +341,8 @@ export default function RAGInterface() {
                 marginBottom: 6,
               }}
             >
-              <div
-                style={{ fontSize: 12, fontWeight: 600, color: t.color }}
-              >
-                {t.short}
-              </div>
-              <div style={{ fontSize: 10, color: "#888", marginTop: 2 }}>
-                {t.desc}
-              </div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: t.color }}>{t.short}</div>
+              <div style={{ fontSize: 10, color: "#888", marginTop: 2 }}>{t.desc}</div>
             </div>
           ))}
         </div>
@@ -508,27 +365,14 @@ export default function RAGInterface() {
         </button>
 
         <div style={{ flex: 1 }} />
-        <div
-          style={{
-            fontSize: 10,
-            color: "#555",
-            textAlign: "center",
-            lineHeight: 1.5,
-          }}
-        >
+        <div style={{ fontSize: 10, color: "#555", textAlign: "center", lineHeight: 1.5 }}>
           Angular · Spring Boot<br />Projet IA Générative 2025
         </div>
       </div>
 
-      {/* Main */}
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          minWidth: 0,
-        }}
-      >
+      {/* ── Main ── */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+
         {/* Header */}
         <div
           style={{
@@ -567,31 +411,13 @@ export default function RAGInterface() {
         </div>
 
         {/* Messages */}
-        <div
-          style={{
-            flex: 1,
-            overflowY: "auto",
-            padding: "24px",
-          }}
-        >
+        <div style={{ flex: 1, overflowY: "auto", padding: "24px" }}>
           {showArch && <ArchitectureDiagram />}
 
           {messages.length === 0 && (
-            <div
-              style={{
-                textAlign: "center",
-                paddingTop: 60,
-              }}
-            >
+            <div style={{ textAlign: "center", paddingTop: 60 }}>
               <div style={{ fontSize: 48, marginBottom: 12 }}>🧠</div>
-              <div
-                style={{
-                  fontSize: 22,
-                  fontWeight: 700,
-                  color: "#1a1a2e",
-                  marginBottom: 6,
-                }}
-              >
+              <div style={{ fontSize: 22, fontWeight: 700, color: "#1a1a2e", marginBottom: 6 }}>
                 RAG Agent prêt
               </div>
               <div style={{ fontSize: 14, color: "#888", marginBottom: 32 }}>
@@ -639,13 +465,7 @@ export default function RAGInterface() {
         </div>
 
         {/* Input */}
-        <div
-          style={{
-            background: "#fff",
-            borderTop: "1px solid #e8e6f0",
-            padding: "16px 24px",
-          }}
-        >
+        <div style={{ background: "#fff", borderTop: "1px solid #e8e6f0", padding: "16px 24px" }}>
           <div
             style={{
               display: "flex",
@@ -655,9 +475,7 @@ export default function RAGInterface() {
               border: "1.5px solid #e8e6f0",
               borderRadius: 14,
               padding: "10px 10px 10px 16px",
-              transition: "border-color 0.2s",
             }}
-            onFocus={() => {}}
           >
             <textarea
               rows={1}
@@ -704,14 +522,7 @@ export default function RAGInterface() {
               {loading ? "⏳" : "↑"}
             </button>
           </div>
-          <div
-            style={{
-              fontSize: 11,
-              color: "#bbb",
-              marginTop: 6,
-              textAlign: "center",
-            }}
-          >
+          <div style={{ fontSize: 11, color: "#bbb", marginTop: 6, textAlign: "center" }}>
             Enter pour envoyer · Shift+Enter pour sauter une ligne
           </div>
         </div>
