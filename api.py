@@ -1,9 +1,33 @@
+import json
+import re
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from agent import run_agent
 
 app = Flask(__name__)
-CORS(app)  # Allows React (localhost:5173) to call this API
+CORS(app)
+
+
+def extract_json(text: str):
+    """Try to extract a JSON object from the model response."""
+    try:
+        return json.loads(text.strip())
+    except Exception:
+        pass
+    match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(1))
+        except Exception:
+            pass
+    match = re.search(r"(\{.*\})", text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(1))
+        except Exception:
+            pass
+    return None
+
 
 @app.route("/ask", methods=["POST"])
 def ask():
@@ -14,23 +38,23 @@ def ask():
         return jsonify({"error": "No question provided"}), 400
 
     try:
-        # run_agent() handles everything:
-        # 1. Calls LLaMA3 via Groq
-        # 2. Detects if a tool is needed
-        # 3. Runs the tool (RAG search or Quiz generator)
-        # 4. Returns the final answer
         answer = run_agent(question)
 
-        # Detect which tool was used so the frontend can show the badge
-        tool_used = None
-        if "QUIZ" in answer:
-            tool_used = "generer_quiz"
-        elif answer and len(answer) > 20:
-            tool_used = "chercher_dans_documents"
+        # Check if the answer contains quiz JSON
+        parsed = extract_json(answer)
+        if parsed and parsed.get("type") == "quiz":
+            return jsonify({
+                "answer": answer,
+                "tool_used": "generer_quiz",
+                "quiz": parsed
+            })
 
+        # Otherwise it's a regular RAG answer
+        tool_used = "chercher_dans_documents" if answer and len(answer) > 20 else None
         return jsonify({
             "answer": answer,
-            "tool_used": tool_used
+            "tool_used": tool_used,
+            "quiz": None
         })
 
     except Exception as e:
