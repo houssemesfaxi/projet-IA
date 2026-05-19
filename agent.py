@@ -22,7 +22,7 @@ vector_db = Chroma(
     embedding_function=embeddings
 )
 
-retriever = vector_db.as_retriever(search_kwargs={"k": 4})
+retriever = vector_db.as_retriever(search_kwargs={"k": 6})
 
 
 # ── Outil 1 : RAG — Recherche dans les documents ───────────────
@@ -39,13 +39,14 @@ def chercher_dans_documents(question: str) -> str:
 # ── Outil 2 : Générateur de Quiz ───────────────────────────────
 @tool
 def generer_quiz(sujet: str) -> str:
-    """Génère un quiz QCM de 3 questions à partir des documents sur un sujet donné.
-    Utiliser quand l'utilisateur demande un quiz, des questions de révision ou un test."""
+    """Génère un quiz interactif QCM de 5 questions sur un sujet donné.
+    Utiliser OBLIGATOIREMENT quand l'utilisateur demande un quiz, des questions,
+    un test, une révision ou un QCM. Ne jamais utiliser chercher_dans_documents pour ça."""
     docs = retriever.invoke(sujet)
     if not docs:
-        return "Aucun document trouvé pour générer un quiz sur ce sujet."
+        return "QUIZ_ERROR: Aucun document trouvé pour ce sujet."
 
-    contexte = "\n\n".join([doc.page_content for doc in docs[:3]])
+    contexte = "\n\n".join([doc.page_content for doc in docs[:5]])
 
     llm_temp = ChatGroq(
         model=MODEL_NAME,
@@ -53,26 +54,33 @@ def generer_quiz(sujet: str) -> str:
         api_key=os.getenv("GROQ_API_KEY"),
     )
 
-    prompt = f"""Tu es un professeur. En te basant UNIQUEMENT sur ce contexte, génère un quiz de 3 questions QCM.
+    prompt = f"""Tu es un professeur. En te basant UNIQUEMENT sur ce contexte, génère un quiz de 5 questions QCM.
 
 Contexte :
 {contexte}
 
-Format obligatoire :
+IMPORTANT : Respecte EXACTEMENT ce format JSON, sans texte avant ni après :
 
-QUIZ : {sujet}
+{{
+  "type": "quiz",
+  "sujet": "{sujet}",
+  "questions": [
+    {{
+      "id": 1,
+      "question": "texte de la question",
+      "options": {{
+        "A": "texte option A",
+        "B": "texte option B",
+        "C": "texte option C",
+        "D": "texte option D"
+      }},
+      "reponse": "A",
+      "explication": "courte explication pourquoi c'est la bonne réponse"
+    }}
+  ]
+}}
 
-Q1 : [question]
-A) ... B) ... C) ... D) ...
-Bonne réponse : [lettre]
-
-Q2 : [question]
-A) ... B) ... C) ... D) ...
-Bonne réponse : [lettre]
-
-Q3 : [question]
-A) ... B) ... C) ... D) ...
-Bonne réponse : [lettre]"""
+Génère exactement 5 questions. Réponds UNIQUEMENT avec le JSON, rien d'autre."""
 
     response = llm_temp.invoke(prompt)
     return response.content
@@ -98,22 +106,20 @@ def run_agent(question: str) -> str:
         api_key=api_key,
     )
 
-    # bind_tools : relie les outils au modèle
-    # Le modèle peut maintenant décider d'appeler un outil si nécessaire
     llm_with_tools = llm.bind_tools(TOOLS)
 
     messages = [
         SystemMessage(content=(
             "Tu es un assistant technique spécialisé en Angular et Spring Boot. "
-            "Tu peux consulter la documentation pour répondre aux questions techniques. "
-            "Tu peux aussi générer des quiz sur demande. "
-            "Utilise un outil seulement si c'est utile. "
+            "RÈGLE ABSOLUE : Si l'utilisateur demande un quiz, un QCM, un test ou des questions de révision, "
+            "tu DOIS appeler l'outil generer_quiz. N'utilise JAMAIS chercher_dans_documents pour un quiz. "
+            "Pour toute autre question technique, utilise chercher_dans_documents. "
             "Base ta réponse finale sur le résultat de l'outil utilisé."
         )),
         HumanMessage(content=question),
     ]
 
-    # Étape 1 : le LLM analyse la question et décide si un outil est nécessaire
+    # Étape 1 : le LLM analyse la question et décide quel outil utiliser
     first_response = llm_with_tools.invoke(messages)
     messages.append(first_response)
 
@@ -125,6 +131,11 @@ def run_agent(question: str) -> str:
             selected_tool = TOOLS_BY_NAME[tool_name]
             tool_output = selected_tool.invoke(tool_args)
 
+            # ── Fix quiz : retourner le JSON directement sans repasser par le LLM
+            # Si on repasse par le LLM, il réécrit le JSON en texte normal
+            if tool_name == "generer_quiz":
+                return tool_output
+
             messages.append(
                 ToolMessage(
                     content=tool_output,
@@ -132,7 +143,7 @@ def run_agent(question: str) -> str:
                 )
             )
 
-        # Étape 3 : le LLM produit la réponse finale avec le résultat de l'outil
+        # Étape 3 : réponse finale (uniquement pour chercher_dans_documents)
         final_response = llm_with_tools.invoke(messages)
         return final_response.content
 
