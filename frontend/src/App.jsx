@@ -1,5 +1,108 @@
 import { useState, useRef, useEffect } from "react";
 
+// ── Interactive Quiz Component ────────────────────────────────
+function QuizCard({ quiz }) {
+  const [selected, setSelected] = useState({});
+  const [revealed, setRevealed] = useState({});
+  const [score, setScore] = useState(null);
+
+  const handleSelect = (qId, letter) => {
+    if (revealed[qId]) return;
+    setSelected((prev) => ({ ...prev, [qId]: letter }));
+  };
+
+  const handleReveal = (qId) => {
+    if (!selected[qId]) return;
+    setRevealed((prev) => ({ ...prev, [qId]: true }));
+  };
+
+  const handleFinish = () => {
+    let correct = 0;
+    quiz.questions.forEach((q) => {
+      if (selected[q.id] === q.reponse) correct++;
+    });
+    setScore(correct);
+  };
+
+  const allAnswered = quiz.questions.every((q) => selected[q.id]);
+
+  return (
+    <div style={{ width: "100%" }}>
+      <div style={{ background: "linear-gradient(135deg,#7c3aed,#9F94E8)", borderRadius: "12px 12px 0 0", padding: "14px 18px", display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 20 }}>📝</span>
+        <div>
+          <div style={{ color: "#fff", fontWeight: 700, fontSize: 15 }}>Quiz : {quiz.sujet}</div>
+          <div style={{ color: "#ddd6fe", fontSize: 11 }}>{quiz.questions.length} questions · Choisissez une option puis "Vérifier"</div>
+        </div>
+        {score !== null && (
+          <div style={{ marginLeft: "auto", background: "#fff", color: "#7c3aed", fontWeight: 800, fontSize: 14, padding: "4px 14px", borderRadius: 20 }}>
+            {score}/{quiz.questions.length}
+          </div>
+        )}
+      </div>
+
+      <div style={{ background: "#fafafa", border: "1px solid #e8e6f0", borderTop: "none", borderRadius: "0 0 12px 12px", padding: "16px", display: "flex", flexDirection: "column", gap: 16 }}>
+        {quiz.questions.map((q) => {
+          const isRevealed = revealed[q.id];
+          const userPick = selected[q.id];
+          return (
+            <div key={q.id} style={{ background: "#fff", border: "1px solid #e8e6f0", borderRadius: 10, padding: "12px 14px" }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#1a1a2e", marginBottom: 10 }}>
+                <span style={{ background: "#7c3aed", color: "#fff", borderRadius: "50%", width: 22, height: 22, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, marginRight: 8 }}>
+                  {q.id}
+                </span>
+                {q.question}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {Object.entries(q.options).map(([letter, text]) => {
+                  let bg = "#f8f8fc", border = "1px solid #e8e6f0", color = "#333";
+                  if (isRevealed) {
+                    if (letter === q.reponse) { bg = "#dcfce7"; border = "1.5px solid #22c55e"; color = "#15803d"; }
+                    else if (letter === userPick) { bg = "#fee2e2"; border = "1.5px solid #ef4444"; color = "#b91c1c"; }
+                  } else if (letter === userPick) {
+                    bg = "#ede9fb"; border = "1.5px solid #7c3aed"; color = "#7c3aed";
+                  }
+                  return (
+                    <div key={letter} onClick={() => handleSelect(q.id, letter)}
+                      style={{ display: "flex", alignItems: "center", gap: 10, background: bg, border, borderRadius: 8, padding: "7px 12px", cursor: isRevealed ? "default" : "pointer", transition: "all 0.15s", fontSize: 13, color, fontWeight: (letter === userPick || (isRevealed && letter === q.reponse)) ? 600 : 400 }}>
+                      <span style={{ width: 22, height: 22, borderRadius: "50%", background: letter === userPick ? "#7c3aed" : "#e8e6f0", color: letter === userPick ? "#fff" : "#888", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0, transition: "all 0.15s" }}>
+                        {letter}
+                      </span>
+                      {text}
+                      {isRevealed && letter === q.reponse && <span style={{ marginLeft: "auto" }}>✅</span>}
+                      {isRevealed && letter === userPick && letter !== q.reponse && <span style={{ marginLeft: "auto" }}>❌</span>}
+                    </div>
+                  );
+                })}
+              </div>
+              {!isRevealed ? (
+                <button onClick={() => handleReveal(q.id)} disabled={!userPick}
+                  style={{ marginTop: 10, background: userPick ? "#7c3aed" : "#ccc", color: "#fff", border: "none", borderRadius: 8, padding: "6px 16px", fontSize: 12, fontWeight: 600, cursor: userPick ? "pointer" : "not-allowed" }}>
+                  Vérifier
+                </button>
+              ) : (
+                <div style={{ marginTop: 10, background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#6d28d9" }}>
+                  💡 {q.explication}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {score === null ? (
+          <button onClick={handleFinish} disabled={!allAnswered}
+            style={{ background: allAnswered ? "linear-gradient(135deg,#7c3aed,#9F94E8)" : "#ccc", color: "#fff", border: "none", borderRadius: 10, padding: "10px", fontSize: 14, fontWeight: 700, cursor: allAnswered ? "pointer" : "not-allowed" }}>
+            Voir mon score
+          </button>
+        ) : (
+          <div style={{ background: score === quiz.questions.length ? "#dcfce7" : score >= quiz.questions.length / 2 ? "#fef9c3" : "#fee2e2", border: "1px solid #e8e6f0", borderRadius: 10, padding: "14px", textAlign: "center", fontWeight: 700, fontSize: 15, color: "#1a1a2e" }}>
+            {score === quiz.questions.length ? "🎉 Parfait !" : score >= quiz.questions.length / 2 ? "👍 Bien joué !" : "📚 Révisez encore !"} Score : {score}/{quiz.questions.length}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const SUGGESTIONS = [
   { icon: "⚙️", text: "Comment créer un composant Angular ?" },
   { icon: "🌱", text: "Explique les annotations Spring Boot" },
@@ -53,66 +156,27 @@ function ToolBadge({ name }) {
 
 function Message({ msg }) {
   const isUser = msg.role === "user";
+  const isQuiz = !isUser && msg.quiz;
+
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: isUser ? "row-reverse" : "row",
-        gap: 10,
-        marginBottom: 20,
-        alignItems: "flex-start",
-      }}
-    >
-      <div
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: "50%",
-          background: isUser
-            ? "linear-gradient(135deg,#7C6FCD,#9F94E8)"
-            : "linear-gradient(135deg,#0f766e,#14b8a6)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 14,
-          flexShrink: 0,
-          color: "#fff",
-          fontWeight: 700,
-        }}
-      >
+    <div style={{ display: "flex", flexDirection: isUser ? "row-reverse" : "row", gap: 10, marginBottom: 20, alignItems: "flex-start" }}>
+      <div style={{ width: 32, height: 32, borderRadius: "50%", background: isUser ? "linear-gradient(135deg,#7C6FCD,#9F94E8)" : "linear-gradient(135deg,#0f766e,#14b8a6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0, color: "#fff", fontWeight: 700 }}>
         {isUser ? "U" : "AI"}
       </div>
-      <div style={{ maxWidth: "75%", minWidth: 60 }}>
-        {msg.toolUsed && (
+      <div style={{ maxWidth: isQuiz ? "90%" : "75%", minWidth: 60, width: isQuiz ? "90%" : undefined }}>
+        {msg.toolUsed && !isQuiz && (
           <div style={{ marginBottom: 6 }}>
             <ToolBadge name={msg.toolUsed} />
           </div>
         )}
-        <div
-          style={{
-            background: isUser
-              ? "linear-gradient(135deg,#7C6FCD,#9F94E8)"
-              : "#f8f8fc",
-            color: isUser ? "#fff" : "#1a1a2e",
-            padding: "10px 14px",
-            borderRadius: isUser ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
-            fontSize: 14,
-            lineHeight: 1.65,
-            border: isUser ? "none" : "1px solid #e8e6f0",
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-          }}
-        >
-          {msg.content || <TypingDots />}
-        </div>
-        <div
-          style={{
-            fontSize: 11,
-            color: "#aaa",
-            marginTop: 4,
-            textAlign: isUser ? "right" : "left",
-          }}
-        >
+        {isQuiz ? (
+          <QuizCard quiz={msg.quiz} />
+        ) : (
+          <div style={{ background: isUser ? "linear-gradient(135deg,#7C6FCD,#9F94E8)" : "#f8f8fc", color: isUser ? "#fff" : "#1a1a2e", padding: "10px 14px", borderRadius: isUser ? "18px 18px 4px 18px" : "18px 18px 18px 4px", fontSize: 14, lineHeight: 1.65, border: isUser ? "none" : "1px solid #e8e6f0", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+            {msg.content || <TypingDots />}
+          </div>
+        )}
+        <div style={{ fontSize: 11, color: "#aaa", marginTop: 4, textAlign: isUser ? "right" : "left" }}>
           {msg.time}
         </div>
       </div>
@@ -209,6 +273,7 @@ export default function RAGInterface() {
       const data = await res.json();
       const finalContent = data.answer;
       const toolUsed = data.tool_used || null;
+      const quiz = data.quiz || null;
 
       // Update stats
       setStats((s) => ({
@@ -220,7 +285,7 @@ export default function RAGInterface() {
       setMessages((prev) =>
         prev.map((m, i) =>
           i === prev.length - 1
-            ? { role: "assistant", content: finalContent, time: now(), toolUsed }
+            ? { role: "assistant", content: finalContent, time: now(), toolUsed, quiz }
             : m
         )
       );
